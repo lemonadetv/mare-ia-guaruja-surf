@@ -19,6 +19,66 @@ function computeScore(waveM, periodS, windKmh, aligned) {
   return Math.max(5, Math.min(99, Math.round(s)));
 }
 
+// Stormglass free tier is very limited (10 req/day) — cache the shared tide
+// read in-memory per warm serverless instance so concurrent refreshes across
+// visitors don't each burn a request.
+let tideCache = { data: null, fetchedAt: 0 };
+const TIDE_CACHE_MS = 20 * 60 * 1000;
+const TOWN_LAT = -24.0027, TOWN_LNG = -46.2611;
+
+async function fetchTideExtremes() {
+  const key = process.env.STORMGLASS_API_KEY;
+  if (!key) return null;
+  const now = Date.now();
+  if (tideCache.data && (now - tideCache.fetchedAt) < TIDE_CACHE_MS) return tideCache.data;
+  try {
+    const start = new Date(now - 6 * 3600 * 1000).toISOString();
+    const end = new Date(now + 24 * 3600 * 1000).toISOString();
+    const res = await fetch(
+      `https://api.stormglass.io/v2/tide/extremes/point?lat=${TOWN_LAT}&lng=${TOWN_LNG}&start=${start}&end=${end}`,
+      { headers: { Authorization: key } }
+    );
+    if (!res.ok) return tideCache.data;
+    const json = await res.json();
+    tideCache = { data: json, fetchedAt: now };
+    return json;
+  } catch (e) {
+    return tideCache.data;
+  }
+}
+
+function summarizeTide(json) {
+  if (!json || !Array.isArray(json.data) || !json.data.length) return null;
+  const now = Date.now();
+  const points = json.data
+    .map(p => ({ type: p.type, time: new Date(p.time).getTime(), height: p.height }))
+    .sort((a, b) => a.time - b.time);
+  const past = points.filter(p => p.time <= now);
+  const future = points.filter(p => p.time > now);
+  const prev = past[past.length - 1];
+  const next = future[0];
+
+  let height = null, direction = null;
+  if (prev && next) {
+    const frac = (now - prev.time) / (next.time - prev.time);
+    height = prev.height + (next.height - prev.height) * (1 - Math.cos(Math.PI * frac)) / 2;
+    direction = next.height > prev.height ? 'up' : 'down';
+  } else if (next) {
+    height = next.height;
+  }
+
+  const fmtTime = ts => new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+  const nextHigh = future.find(p => p.type === 'high');
+  const nextLow = future.find(p => p.type === 'low');
+
+  return {
+    height: height != null ? height.toFixed(1).replace('.', ',') : null,
+    direction,
+    nextHighTime: nextHigh ? fmtTime(nextHigh.time) : null,
+    nextLowTime: nextLow ? fmtTime(nextLow.time) : null
+  };
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'method not allowed' });
@@ -39,15 +99,18 @@ module.exports = async (req, res) => {
   const lngs = spots.map(s => s.lng).join(',');
 
   try {
-    const [marineRes, weatherRes] = await Promise.all([
+    const [marineRes, weatherRes, tideRaw] = await Promise.all([
       fetch(`${MARINE_URL}?latitude=${lats}&longitude=${lngs}&current=wave_height,wave_period,wave_direction&timezone=auto`),
-      fetch(`${WEATHER_URL}?latitude=${lats}&longitude=${lngs}&current=precipitation,wind_speed_10m,wind_direction_10m,temperature_2m&daily=precipitation_sum&timezone=auto&wind_speed_unit=kmh&forecast_days=1`)
+      fetch(`${WEATHER_URL}?latitude=${lats}&longitude=${lngs}&current=precipitation,wind_speed_10m,wind_direction_10m,temperature_2m&daily=precipitation_sum&timezone=auto&wind_speed_unit=kmh&forecast_days=1`),
+      fetchTideExtremes()
     ]);
 
     if (!marineRes.ok || !weatherRes.ok) {
       res.status(200).json({ error: 'upstream-error', spots: [] });
       return;
     }
+
+    const tide = summarizeTide(tideRaw);
 
     const marine = await marineRes.json();
     const weather = await weatherRes.json();
@@ -92,7 +155,7 @@ module.exports = async (req, res) => {
       };
     });
 
-    res.status(200).json({ updatedAt: new Date().toISOString(), spots: result });
+    res.status(200).json({ updatedAt: new Date().toISOString(), spots: result, tide });
   } catch (err) {
     res.status(200).json({ error: 'fetch-failed', spots: [] });
   }
