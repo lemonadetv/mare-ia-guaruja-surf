@@ -13,6 +13,44 @@ function angleDiff(a, b) {
   return d > 180 ? 360 - d : d;
 }
 
+const WEEKDAYS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
+
+function buildWeek(m, w, spotName, windAngle) {
+  const md = (m && m.daily) || {};
+  const wd = (w && w.daily) || {};
+  const times = Array.isArray(md.time) ? md.time : [];
+  if (!times.length) return [];
+  return times.map((dateStr, i) => {
+    const wave = md.wave_height_max ? md.wave_height_max[i] : null;
+    const period = md.wave_period_max ? md.wave_period_max[i] : null;
+    const waveDir = md.wave_direction_dominant ? md.wave_direction_dominant[i] : null;
+    const wind = wd.wind_speed_10m_max ? wd.wind_speed_10m_max[i] : null;
+    const windDir = wd.wind_direction_10m_dominant ? wd.wind_direction_10m_dominant[i] : null;
+    const precip = wd.precipitation_sum ? wd.precipitation_sum[i] : null;
+
+    let score = null;
+    if (wave != null && period != null && wind != null && windDir != null) {
+      const offshoreRef = typeof windAngle === 'number' ? windAngle : waveDir;
+      const aligned = offshoreRef != null && angleDiff(windDir, offshoreRef) < 90;
+      score = computeScore(wave, period, wind, aligned);
+    }
+
+    const d = new Date(dateStr + 'T12:00:00');
+    return {
+      day: WEEKDAYS[d.getDay()],
+      date: `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`,
+      spot: spotName,
+      wave: wave != null ? wave.toFixed(1).replace('.', ',') : null,
+      period: period != null ? Math.round(period) : null,
+      waveDir: waveDir != null ? dirLabel(waveDir) : null,
+      wind: wind != null ? Math.round(wind) : null,
+      windDir: windDir != null ? dirLabel(windDir) : null,
+      precip,
+      score
+    };
+  });
+}
+
 function buildHourly(m, w) {
   const mh = (m && m.hourly) || {};
   const wh = (w && w.hourly) || {};
@@ -123,8 +161,8 @@ module.exports = async (req, res) => {
 
   try {
     const [marineRes, weatherRes, tideRaw] = await Promise.all([
-      fetch(`${MARINE_URL}?latitude=${lats}&longitude=${lngs}&current=wave_height,wave_period,wave_direction&hourly=wave_height,wave_period&timezone=auto&forecast_days=2`),
-      fetch(`${WEATHER_URL}?latitude=${lats}&longitude=${lngs}&current=precipitation,wind_speed_10m,wind_direction_10m,temperature_2m&hourly=wind_speed_10m,precipitation&daily=precipitation_sum&timezone=auto&wind_speed_unit=kmh&forecast_days=2`),
+      fetch(`${MARINE_URL}?latitude=${lats}&longitude=${lngs}&current=wave_height,wave_period,wave_direction&hourly=wave_height,wave_period&daily=wave_height_max,wave_period_max,wave_direction_dominant&timezone=auto&forecast_days=7`),
+      fetch(`${WEATHER_URL}?latitude=${lats}&longitude=${lngs}&current=precipitation,wind_speed_10m,wind_direction_10m,temperature_2m&hourly=wind_speed_10m,precipitation&daily=precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant&timezone=auto&wind_speed_unit=kmh&forecast_days=7`),
       fetchTideExtremes()
     ]);
 
@@ -175,7 +213,8 @@ module.exports = async (req, res) => {
         windKind,
         precip, precipToday, temp,
         score,
-        hourly: buildHourly(m, w)
+        hourly: buildHourly(m, w),
+        week: buildWeek(m, w, s.name || s.id, s.windAngle)
       };
     });
 
