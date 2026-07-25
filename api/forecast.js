@@ -13,6 +13,29 @@ function angleDiff(a, b) {
   return d > 180 ? 360 - d : d;
 }
 
+function buildHourly(m, w) {
+  const mh = (m && m.hourly) || {};
+  const wh = (w && w.hourly) || {};
+  const times = Array.isArray(mh.time) ? mh.time : [];
+  if (!times.length) return [];
+  const now = Date.now();
+  let startIdx = times.findIndex(t => new Date(t).getTime() >= now);
+  if (startIdx === -1) startIdx = 0;
+  const waves = Array.isArray(mh.wave_height) ? mh.wave_height : [];
+  const winds = Array.isArray(wh.wind_speed_10m) ? wh.wind_speed_10m : [];
+  const precs = Array.isArray(wh.precipitation) ? wh.precipitation : [];
+  const out = [];
+  for (let i = startIdx; i < Math.min(startIdx + 13, times.length); i++) {
+    out.push({
+      t: new Date(times[i]).toLocaleTimeString('pt-BR', { hour: '2-digit', timeZone: 'America/Sao_Paulo' }),
+      wave: typeof waves[i] === 'number' ? waves[i] : null,
+      wind: typeof winds[i] === 'number' ? winds[i] : null,
+      precip: typeof precs[i] === 'number' ? precs[i] : null
+    });
+  }
+  return out;
+}
+
 function computeScore(waveM, periodS, windKmh, aligned) {
   let s = Math.min(waveM * 28, 55) + Math.min(periodS * 2.5, 30);
   s += aligned ? Math.max(0, 15 - windKmh * 0.3) : -Math.min(25, windKmh * 0.6);
@@ -100,8 +123,8 @@ module.exports = async (req, res) => {
 
   try {
     const [marineRes, weatherRes, tideRaw] = await Promise.all([
-      fetch(`${MARINE_URL}?latitude=${lats}&longitude=${lngs}&current=wave_height,wave_period,wave_direction&timezone=auto`),
-      fetch(`${WEATHER_URL}?latitude=${lats}&longitude=${lngs}&current=precipitation,wind_speed_10m,wind_direction_10m,temperature_2m&daily=precipitation_sum&timezone=auto&wind_speed_unit=kmh&forecast_days=1`),
+      fetch(`${MARINE_URL}?latitude=${lats}&longitude=${lngs}&current=wave_height,wave_period,wave_direction&hourly=wave_height,wave_period&timezone=auto&forecast_days=2`),
+      fetch(`${WEATHER_URL}?latitude=${lats}&longitude=${lngs}&current=precipitation,wind_speed_10m,wind_direction_10m,temperature_2m&hourly=wind_speed_10m,precipitation&daily=precipitation_sum&timezone=auto&wind_speed_unit=kmh&forecast_days=2`),
       fetchTideExtremes()
     ]);
 
@@ -151,7 +174,8 @@ module.exports = async (req, res) => {
         windDir: windDir != null ? dirLabel(windDir) : null,
         windKind,
         precip, precipToday, temp,
-        score
+        score,
+        hourly: buildHourly(m, w)
       };
     });
 
