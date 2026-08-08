@@ -139,8 +139,9 @@ module.exports = async (req, res) => {
       user.chatHistory = body.chatHistory != null ? body.chatHistory : user.chatHistory;
       user.settings = body.settings != null ? body.settings : user.settings;
       user.updatedAt = new Date().toISOString();
-      await writeUser(email, user);
-      return res.status(200).json({ ok: true });
+      let writeError = null;
+      try { await writeUser(email, user); } catch (werr) { writeError = werr && werr.message; }
+      return res.status(200).json({ ok: true, debugReceivedSettings: body.settings, debugWriteError: writeError, debugWrittenSettings: user.settings });
     }
 
     if (action === 'loadData') {
