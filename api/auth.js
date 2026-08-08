@@ -1,5 +1,7 @@
 const crypto = require('crypto');
-const { put, head } = require('@vercel/blob');
+const { put, head, list, del } = require('@vercel/blob');
+
+const ADMIN_EMAILS = ['rhhellbrugge@gmail.com'];
 
 function hashSecret(secret) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -21,9 +23,15 @@ function genToken() { return crypto.randomBytes(24).toString('hex'); }
 
 function normalizeEmail(email) { return String(email || '').trim().toLowerCase(); }
 
+function isAdmin(email) { return ADMIN_EMAILS.includes(normalizeEmail(email)); }
+
 function pathnameFor(email) {
   const key = crypto.createHash('sha256').update(normalizeEmail(email)).digest('hex');
   return `users/${key}.json`;
+}
+
+function defaultStats(now) {
+  return { loginCount: 0, lastLoginAt: null, lastActiveAt: now, tabViews: {}, chatMessagesSent: 0, refreshClicks: 0, favoriteToggles: 0 };
 }
 
 async function readUser(email) {
@@ -65,6 +73,13 @@ function isValidEmail(email) {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
+async function requireAdmin(email, token) {
+  if (!isAdmin(email)) return null;
+  const admin = await readUser(email);
+  if (!admin || admin.sessionToken !== token) return null;
+  return admin;
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'method_not_allowed' });
@@ -93,10 +108,11 @@ module.exports = async (req, res) => {
         securityQuestion: String(body.securityQuestion).slice(0, 140),
         securityAnswerHash: hashSecret(String(body.securityAnswer).trim().toLowerCase()),
         sessionToken: token, chatHistory: null, settings: null,
+        stats: defaultStats(now),
         createdAt: now, updatedAt: now
       };
       await writeUser(email, record);
-      return res.status(200).json({ ok: true, email, token, chatHistory: null, settings: null });
+      return res.status(200).json({ ok: true, email, token, chatHistory: null, settings: null, isAdmin: isAdmin(email) });
     }
 
     if (action === 'login') {
@@ -105,10 +121,15 @@ module.exports = async (req, res) => {
       if (!user) return res.status(404).json({ error: 'not_found' });
       if (!verifySecret(String(body.password || ''), user.passwordHash)) return res.status(401).json({ error: 'wrong_password' });
       const token = genToken();
+      const now = new Date().toISOString();
       user.sessionToken = token;
-      user.updatedAt = new Date().toISOString();
+      user.updatedAt = now;
+      user.stats = user.stats || defaultStats(now);
+      user.stats.loginCount = (user.stats.loginCount || 0) + 1;
+      user.stats.lastLoginAt = now;
+      user.stats.lastActiveAt = now;
       await writeUser(email, user);
-      return res.status(200).json({ ok: true, email, token, chatHistory: user.chatHistory, settings: user.settings });
+      return res.status(200).json({ ok: true, email, token, chatHistory: user.chatHistory, settings: user.settings, isAdmin: isAdmin(email) });
     }
 
     if (action === 'getSecurityQuestion') {
@@ -131,7 +152,7 @@ module.exports = async (req, res) => {
       user.sessionToken = token;
       user.updatedAt = new Date().toISOString();
       await writeUser(email, user);
-      return res.status(200).json({ ok: true, email, token, chatHistory: user.chatHistory, settings: user.settings });
+      return res.status(200).json({ ok: true, email, token, chatHistory: user.chatHistory, settings: user.settings, isAdmin: isAdmin(email) });
     }
 
     if (action === 'changePassword') {
@@ -161,7 +182,66 @@ module.exports = async (req, res) => {
       if (!isValidEmail(email)) return res.status(400).json({ error: 'invalid_email' });
       const user = await readUser(email);
       if (!user || user.sessionToken !== body.token) return res.status(401).json({ error: 'invalid_session' });
-      return res.status(200).json({ ok: true, chatHistory: user.chatHistory, settings: user.settings });
+      return res.status(200).json({ ok: true, chatHistory: user.chatHistory, settings: user.settings, isAdmin: isAdmin(email) });
+    }
+
+    if (action === 'track') {
+      if (!isValidEmail(email)) return res.status(400).json({ error: 'invalid_email' });
+      const user = await readUser(email);
+      if (!user || user.sessionToken !== body.token) return res.status(401).json({ error: 'invalid_session' });
+      const now = new Date().toISOString();
+      user.stats = user.stats || defaultStats(now);
+      user.stats.lastActiveAt = now;
+      const ev = String(body.event || '');
+      if (ev.indexOf('tab_') === 0) {
+        user.stats.tabViews[ev] = (user.stats.tabViews[ev] || 0) + 1;
+      } else if (ev === 'chat_send') {
+        user.stats.chatMessagesSent = (user.stats.chatMessagesSent || 0) + 1;
+      } else if (ev === 'refresh') {
+        user.stats.refreshClicks = (user.stats.refreshClicks || 0) + 1;
+      } else if (ev === 'favorite_toggle') {
+        user.stats.favoriteToggles = (user.stats.favoriteToggles || 0) + 1;
+      }
+      user.updatedAt = now;
+      await writeUser(email, user);
+      return res.status(200).json({ ok: true });
+    }
+
+    if (action === 'adminListUsers') {
+      const admin = await requireAdmin(email, body.token);
+      if (!admin) return res.status(403).json({ error: 'forbidden' });
+      const { blobs } = await list({ prefix: 'users/', token: process.env.BLOB_READ_WRITE_TOKEN });
+      const users = [];
+      for (const b of blobs) {
+        try {
+          const r = await fetch(b.url, { headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` } });
+          if (!r.ok) continue;
+          const u = await r.json();
+          if (!u.email) continue;
+          users.push({
+            email: u.email,
+            createdAt: u.createdAt,
+            updatedAt: u.updatedAt,
+            isAdmin: isAdmin(u.email),
+            favoriteId: (u.settings && u.settings.favoriteId) || null,
+            unit: (u.settings && u.settings.unit) || null,
+            chatMessages: Array.isArray(u.chatHistory) ? u.chatHistory.length : 0,
+            stats: u.stats || defaultStats(u.createdAt)
+          });
+        } catch (e) {}
+      }
+      users.sort((a, b2) => new Date(b2.updatedAt || 0) - new Date(a.updatedAt || 0));
+      return res.status(200).json({ ok: true, users });
+    }
+
+    if (action === 'adminDeleteUser') {
+      const admin = await requireAdmin(email, body.token);
+      if (!admin) return res.status(403).json({ error: 'forbidden' });
+      const targetEmail = normalizeEmail(body.targetEmail);
+      if (!isValidEmail(targetEmail)) return res.status(400).json({ error: 'invalid_email' });
+      if (targetEmail === email) return res.status(400).json({ error: 'cannot_delete_self' });
+      await del(pathnameFor(targetEmail), { token: process.env.BLOB_READ_WRITE_TOKEN });
+      return res.status(200).json({ ok: true });
     }
 
     return res.status(400).json({ error: 'unknown_action' });
