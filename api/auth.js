@@ -139,9 +139,14 @@ module.exports = async (req, res) => {
       user.chatHistory = body.chatHistory != null ? body.chatHistory : user.chatHistory;
       user.settings = body.settings != null ? body.settings : user.settings;
       user.updatedAt = new Date().toISOString();
-      let writeError = null;
-      try { await writeUser(email, user); } catch (werr) { writeError = werr && werr.message; }
-      return res.status(200).json({ ok: true, debugReceivedSettings: body.settings, debugWriteError: writeError, debugWrittenSettings: user.settings });
+      let writeError = null, putResult = null;
+      try { putResult = await put(pathnameFor(email), JSON.stringify(user), { access: 'private', contentType: 'application/json', addRandomSuffix: false, allowOverwrite: true, token: process.env.BLOB_READ_WRITE_TOKEN }); } catch (werr) { writeError = werr && werr.message; }
+      const readBack = await readUser(email);
+      return res.status(200).json({
+        ok: true, debugReceivedSettings: body.settings, debugWriteError: writeError,
+        debugPutResultUrl: putResult && putResult.url, debugPutResultUploadedAt: putResult && putResult.uploadedAt,
+        debugReadBackSettings: readBack && readBack.settings, debugReadBackUpdatedAt: readBack && readBack.updatedAt
+      });
     }
 
     if (action === 'loadData') {
