@@ -1,0 +1,7 @@
+{
+  "name": "ase-munrrat-surf-report",
+  "private": true,
+  "dependencies": {
+    "@vercel/blob": "latest"
+  }
+}
