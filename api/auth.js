@@ -37,14 +37,28 @@ async function readUser(email) {
   }
 }
 
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+// Vercel Blob can briefly serve a stale read immediately after a write when requests
+// land in very quick succession (e.g. saveData firing right after signup). Since we
+// already hold the intended final record in memory, we just re-assert the write and
+// verify it stuck, rather than re-reading and re-merging (which would re-trigger the
+// same race).
 async function writeUser(email, record) {
-  await put(pathnameFor(email), JSON.stringify(record), {
-    access: 'private',
-    contentType: 'application/json',
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    token: process.env.BLOB_READ_WRITE_TOKEN
-  });
+  const pathname = pathnameFor(email);
+  const json = JSON.stringify(record);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await put(pathname, json, {
+      access: 'private',
+      contentType: 'application/json',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      token: process.env.BLOB_READ_WRITE_TOKEN
+    });
+    const verify = await readUser(email);
+    if (verify && verify.updatedAt === record.updatedAt) return;
+    if (attempt < 2) await sleep(150 * (attempt + 1));
+  }
 }
 
 function isValidEmail(email) {
@@ -139,14 +153,8 @@ module.exports = async (req, res) => {
       user.chatHistory = body.chatHistory != null ? body.chatHistory : user.chatHistory;
       user.settings = body.settings != null ? body.settings : user.settings;
       user.updatedAt = new Date().toISOString();
-      let writeError = null, putResult = null;
-      try { putResult = await put(pathnameFor(email), JSON.stringify(user), { access: 'private', contentType: 'application/json', addRandomSuffix: false, allowOverwrite: true, token: process.env.BLOB_READ_WRITE_TOKEN }); } catch (werr) { writeError = werr && werr.message; }
-      const readBack = await readUser(email);
-      return res.status(200).json({
-        ok: true, debugReceivedSettings: body.settings, debugWriteError: writeError,
-        debugPutResultUrl: putResult && putResult.url, debugPutResultUploadedAt: putResult && putResult.uploadedAt,
-        debugReadBackSettings: readBack && readBack.settings, debugReadBackUpdatedAt: readBack && readBack.updatedAt
-      });
+      await writeUser(email, user);
+      return res.status(200).json({ ok: true });
     }
 
     if (action === 'loadData') {
