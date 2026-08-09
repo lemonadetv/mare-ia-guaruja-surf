@@ -178,6 +178,17 @@ module.exports = async (req, res) => {
       return res.status(200).json({ ok: true });
     }
 
+    if (action === 'updateName') {
+      if (!isValidEmail(email)) return res.status(400).json({ error: 'invalid_email' });
+      if (!body.name || !String(body.name).trim()) return res.status(400).json({ error: 'missing_name' });
+      const user = await readUser(email);
+      if (!user || user.sessionToken !== body.token) return res.status(401).json({ error: 'invalid_session' });
+      user.name = String(body.name).trim().slice(0, 60);
+      user.updatedAt = new Date().toISOString();
+      await writeUser(email, user);
+      return res.status(200).json({ ok: true, name: user.name });
+    }
+
     if (action === 'saveData') {
       if (!isValidEmail(email)) return res.status(400).json({ error: 'invalid_email' });
       const user = await readUser(email);
