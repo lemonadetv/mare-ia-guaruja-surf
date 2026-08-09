@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Map isolation test</title>
+<style>
+  body { margin: 0; font-family: monospace; background: #111; color: #eee; }
+  #status { padding: 12px; font-size: 13px; white-space: pre-wrap; background: #222; border-bottom: 1px solid #444; }
+  #spacer-before { height: 800px; background: repeating-linear-gradient(45deg, #222, #222 20px, #2a2a2a 20px, #2a2a2a 40px); display: flex; align-items: center; justify-content: center; }
+  #map-anchor { width: 100%; height: 300px; background: #000; border: 2px solid lime; box-sizing: border-box; }
+  #spacer-after { height: 1200px; background: repeating-linear-gradient(45deg, #222, #222 20px, #2a2a2a 20px, #2a2a2a 40px); display: flex; align-items: center; justify-content: center; }
+</style>
+</head>
+<body>
+<div id="status">Loading config…</div>
+<div id="spacer-before">scroll area above the map — 800px tall</div>
+<div id="map-anchor"></div>
+<div id="spacer-after">scroll area below the map — 1200px tall (scroll down to test drift)</div>
+
+<script>
+  const statusEl = document.getElementById('status');
+  function log(msg) { statusEl.textContent += '\n' + msg; console.log(msg); }
+
+  fetch('/api/config').then(r => r.json()).then(cfg => {
+    if (!cfg || !cfg.googleMapsApiKey) { log('ERROR: no API key from /api/config'); return; }
+    log('Got API key, loading Maps JS...');
+    const script = document.createElement('script');
+    script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(cfg.googleMapsApiKey) + '&v=weekly';
+    script.onload = () => {
+      log('Maps JS loaded. Constructing map directly in #map-anchor (NO portal, NO framework)...');
+      const el = document.getElementById('map-anchor');
+      const map = new google.maps.Map(el, {
+        center: { lat: -23.9893, lng: -46.2374 },
+        zoom: 15,
+        mapTypeId: 'satellite',
+        disableDefaultUI: true
+      });
+      setTimeout(() => {
+        const hasImg = !!el.querySelector('img');
+        const hasCanvas = !!el.querySelector('canvas');
+        const childCount = el.querySelectorAll('*').length;
+        log('After 3s: img=' + hasImg + ' canvas=' + hasCanvas + ' totalChildNodes=' + childCount);
+        log(childCount === 0 ? 'BLANK — same bug as the main app.' : 'RENDERED — main app issue is NOT reproduced here.');
+      }, 3000);
+    };
+    script.onerror = () => log('ERROR: failed to load Maps JS script');
+    document.head.appendChild(script);
+  }).catch(e => log('ERROR: ' + e.message));
+</script>
+</body>
+</html>
