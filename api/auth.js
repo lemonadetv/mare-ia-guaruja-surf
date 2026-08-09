@@ -104,6 +104,7 @@ module.exports = async (req, res) => {
   try {
     if (action === 'signup') {
       if (!isValidEmail(email)) return res.status(400).json({ error: 'invalid_email' });
+      if (!body.name || !String(body.name).trim()) return res.status(400).json({ error: 'missing_name' });
       if (!body.password || String(body.password).length < 6) return res.status(400).json({ error: 'weak_password' });
       if (!body.securityQuestion || !body.securityAnswer) return res.status(400).json({ error: 'missing_security' });
       const existing = await readUser(email);
@@ -111,7 +112,7 @@ module.exports = async (req, res) => {
       const token = genToken();
       const now = new Date().toISOString();
       const record = {
-        email, passwordHash: hashSecret(String(body.password)),
+        email, name: String(body.name).trim().slice(0, 60), passwordHash: hashSecret(String(body.password)),
         securityQuestion: String(body.securityQuestion).slice(0, 140),
         securityAnswerHash: hashSecret(String(body.securityAnswer).trim().toLowerCase()),
         sessionToken: token, chatHistory: null, settings: null,
@@ -121,7 +122,7 @@ module.exports = async (req, res) => {
         writeUser(email, record),
         writeStats(email, { ...defaultStats(now), createdAt: now, updatedAt: now })
       ]);
-      return res.status(200).json({ ok: true, email, token, chatHistory: null, settings: null, isAdmin: isAdmin(email) });
+      return res.status(200).json({ ok: true, email, name: record.name, token, chatHistory: null, settings: null, isAdmin: isAdmin(email) });
     }
 
     if (action === 'login') {
@@ -139,7 +140,7 @@ module.exports = async (req, res) => {
       stats.lastActiveAt = now;
       stats.updatedAt = now;
       await Promise.all([writeUser(email, user), writeStats(email, stats)]);
-      return res.status(200).json({ ok: true, email, token, chatHistory: user.chatHistory, settings: user.settings, isAdmin: isAdmin(email) });
+      return res.status(200).json({ ok: true, email, name: user.name || null, token, chatHistory: user.chatHistory, settings: user.settings, isAdmin: isAdmin(email) });
     }
 
     if (action === 'getSecurityQuestion') {
@@ -162,7 +163,7 @@ module.exports = async (req, res) => {
       user.sessionToken = token;
       user.updatedAt = new Date().toISOString();
       await writeUser(email, user);
-      return res.status(200).json({ ok: true, email, token, chatHistory: user.chatHistory, settings: user.settings, isAdmin: isAdmin(email) });
+      return res.status(200).json({ ok: true, email, name: user.name || null, token, chatHistory: user.chatHistory, settings: user.settings, isAdmin: isAdmin(email) });
     }
 
     if (action === 'changePassword') {
@@ -192,7 +193,7 @@ module.exports = async (req, res) => {
       if (!isValidEmail(email)) return res.status(400).json({ error: 'invalid_email' });
       const user = await readUser(email);
       if (!user || user.sessionToken !== body.token) return res.status(401).json({ error: 'invalid_session' });
-      return res.status(200).json({ ok: true, chatHistory: user.chatHistory, settings: user.settings, isAdmin: isAdmin(email) });
+      return res.status(200).json({ ok: true, name: user.name || null, chatHistory: user.chatHistory, settings: user.settings, isAdmin: isAdmin(email) });
     }
 
     if (action === 'track') {
@@ -231,6 +232,7 @@ module.exports = async (req, res) => {
           const stats = (await readStats(u.email)) || defaultStats(u.createdAt);
           users.push({
             email: u.email,
+            name: u.name || null,
             createdAt: u.createdAt,
             updatedAt: u.updatedAt,
             isAdmin: isAdmin(u.email),
