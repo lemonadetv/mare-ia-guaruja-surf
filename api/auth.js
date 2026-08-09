@@ -25,18 +25,21 @@ function normalizeEmail(email) { return String(email || '').trim().toLowerCase()
 
 function isAdmin(email) { return ADMIN_EMAILS.includes(normalizeEmail(email)); }
 
-function pathnameFor(email) {
-  const key = crypto.createHash('sha256').update(normalizeEmail(email)).digest('hex');
-  return `users/${key}.json`;
-}
+function keyFor(email) { return crypto.createHash('sha256').update(normalizeEmail(email)).digest('hex'); }
+function pathnameFor(email) { return `users/${keyFor(email)}.json`; }
+// Usage stats live in a SEPARATE blob from the user record so a `track` call
+// (fired on every tab switch, refresh click, chat send) can never race with a
+// `saveData` call (settings/favorites/chat) and clobber it — each writes its
+// own file, so a read-modify-write on one can't stomp the other's write.
+function statsPathnameFor(email) { return `stats/${keyFor(email)}.json`; }
 
 function defaultStats(now) {
   return { loginCount: 0, lastLoginAt: null, lastActiveAt: now, tabViews: {}, chatMessagesSent: 0, refreshClicks: 0, favoriteToggles: 0 };
 }
 
-async function readUser(email) {
+async function readBlob(pathname) {
   try {
-    const info = await head(pathnameFor(email), { token: process.env.BLOB_READ_WRITE_TOKEN });
+    const info = await head(pathname, { token: process.env.BLOB_READ_WRITE_TOKEN });
     const r = await fetch(info.url, { headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` } });
     if (!r.ok) return null;
     return await r.json();
@@ -52,8 +55,7 @@ function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 // already hold the intended final record in memory, we just re-assert the write and
 // verify it stuck, rather than re-reading and re-merging (which would re-trigger the
 // same race).
-async function writeUser(email, record) {
-  const pathname = pathnameFor(email);
+async function writeBlob(pathname, record) {
   const json = JSON.stringify(record);
   for (let attempt = 0; attempt < 3; attempt++) {
     await put(pathname, json, {
@@ -63,11 +65,16 @@ async function writeUser(email, record) {
       allowOverwrite: true,
       token: process.env.BLOB_READ_WRITE_TOKEN
     });
-    const verify = await readUser(email);
+    const verify = await readBlob(pathname);
     if (verify && verify.updatedAt === record.updatedAt) return;
     if (attempt < 2) await sleep(150 * (attempt + 1));
   }
 }
+
+function readUser(email) { return readBlob(pathnameFor(email)); }
+function writeUser(email, record) { return writeBlob(pathnameFor(email), record); }
+function readStats(email) { return readBlob(statsPathnameFor(email)); }
+function writeStats(email, record) { return writeBlob(statsPathnameFor(email), record); }
 
 function isValidEmail(email) {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -108,10 +115,12 @@ module.exports = async (req, res) => {
         securityQuestion: String(body.securityQuestion).slice(0, 140),
         securityAnswerHash: hashSecret(String(body.securityAnswer).trim().toLowerCase()),
         sessionToken: token, chatHistory: null, settings: null,
-        stats: defaultStats(now),
         createdAt: now, updatedAt: now
       };
-      await writeUser(email, record);
+      await Promise.all([
+        writeUser(email, record),
+        writeStats(email, { ...defaultStats(now), createdAt: now, updatedAt: now })
+      ]);
       return res.status(200).json({ ok: true, email, token, chatHistory: null, settings: null, isAdmin: isAdmin(email) });
     }
 
@@ -124,11 +133,12 @@ module.exports = async (req, res) => {
       const now = new Date().toISOString();
       user.sessionToken = token;
       user.updatedAt = now;
-      user.stats = user.stats || defaultStats(now);
-      user.stats.loginCount = (user.stats.loginCount || 0) + 1;
-      user.stats.lastLoginAt = now;
-      user.stats.lastActiveAt = now;
-      await writeUser(email, user);
+      const stats = (await readStats(email)) || defaultStats(now);
+      stats.loginCount = (stats.loginCount || 0) + 1;
+      stats.lastLoginAt = now;
+      stats.lastActiveAt = now;
+      stats.updatedAt = now;
+      await Promise.all([writeUser(email, user), writeStats(email, stats)]);
       return res.status(200).json({ ok: true, email, token, chatHistory: user.chatHistory, settings: user.settings, isAdmin: isAdmin(email) });
     }
 
@@ -190,20 +200,20 @@ module.exports = async (req, res) => {
       const user = await readUser(email);
       if (!user || user.sessionToken !== body.token) return res.status(401).json({ error: 'invalid_session' });
       const now = new Date().toISOString();
-      user.stats = user.stats || defaultStats(now);
-      user.stats.lastActiveAt = now;
+      const stats = (await readStats(email)) || defaultStats(now);
+      stats.lastActiveAt = now;
       const ev = String(body.event || '');
       if (ev.indexOf('tab_') === 0) {
-        user.stats.tabViews[ev] = (user.stats.tabViews[ev] || 0) + 1;
+        stats.tabViews[ev] = (stats.tabViews[ev] || 0) + 1;
       } else if (ev === 'chat_send') {
-        user.stats.chatMessagesSent = (user.stats.chatMessagesSent || 0) + 1;
+        stats.chatMessagesSent = (stats.chatMessagesSent || 0) + 1;
       } else if (ev === 'refresh') {
-        user.stats.refreshClicks = (user.stats.refreshClicks || 0) + 1;
+        stats.refreshClicks = (stats.refreshClicks || 0) + 1;
       } else if (ev === 'favorite_toggle') {
-        user.stats.favoriteToggles = (user.stats.favoriteToggles || 0) + 1;
+        stats.favoriteToggles = (stats.favoriteToggles || 0) + 1;
       }
-      user.updatedAt = now;
-      await writeUser(email, user);
+      stats.updatedAt = now;
+      await writeStats(email, stats);
       return res.status(200).json({ ok: true });
     }
 
@@ -218,6 +228,7 @@ module.exports = async (req, res) => {
           if (!r.ok) continue;
           const u = await r.json();
           if (!u.email) continue;
+          const stats = (await readStats(u.email)) || defaultStats(u.createdAt);
           users.push({
             email: u.email,
             createdAt: u.createdAt,
@@ -226,7 +237,7 @@ module.exports = async (req, res) => {
             favoriteId: (u.settings && u.settings.favoriteId) || null,
             unit: (u.settings && u.settings.unit) || null,
             chatMessages: Array.isArray(u.chatHistory) ? u.chatHistory.length : 0,
-            stats: u.stats || defaultStats(u.createdAt)
+            stats
           });
         } catch (e) {}
       }
@@ -240,7 +251,10 @@ module.exports = async (req, res) => {
       const targetEmail = normalizeEmail(body.targetEmail);
       if (!isValidEmail(targetEmail)) return res.status(400).json({ error: 'invalid_email' });
       if (targetEmail === email) return res.status(400).json({ error: 'cannot_delete_self' });
-      await del(pathnameFor(targetEmail), { token: process.env.BLOB_READ_WRITE_TOKEN });
+      await Promise.all([
+        del(pathnameFor(targetEmail), { token: process.env.BLOB_READ_WRITE_TOKEN }),
+        del(statsPathnameFor(targetEmail), { token: process.env.BLOB_READ_WRITE_TOKEN }).catch(() => {})
+      ]);
       return res.status(200).json({ ok: true });
     }
 
