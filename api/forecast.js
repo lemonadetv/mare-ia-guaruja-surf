@@ -210,6 +210,7 @@ module.exports = async (req, res) => {
         waveDirDeg: waveDir,
         wind: wind != null ? Math.round(wind) : null,
         windDir: windDir != null ? dirLabel(windDir) : null,
+        windDirDeg: windDir,
         windKind,
         precip, precipToday, temp,
         score,
