@@ -34,12 +34,17 @@ document.addEventListener('DOMContentLoaded', async function() {
   async function parseManifestWithRetry(el) {
     let lastErr;
     for (let attempt = 0; attempt < 15; attempt++) {
-      try { return JSON.parse(el.textContent); }
-      catch (err) {
+      const t = el.textContent;
+      try {
+        const r = JSON.parse(t);
+        console.warn('[diag] attempt', attempt, 'OK len', t.length);
+        return r;
+      } catch (err) {
         lastErr = err;
-        // Plain setTimeout only — requestAnimationFrame is suspended in
-        // backgrounded/hidden tabs and would hang this retry forever there.
-        await new Promise(function(r) { setTimeout(r, 200); });
+        const m = err.message.match(/position (\d+)/);
+        const pos = m ? parseInt(m[1], 10) : -1;
+        console.warn('[diag] attempt', attempt, 'FAIL len', t.length, 'pos', pos, 'code', pos >= 0 ? t.charCodeAt(pos) : null, 'ctx', pos >= 0 ? JSON.stringify(t.slice(Math.max(0, pos - 15), pos + 15)) : null);
+        await new Promise(function (r) { setTimeout(r, 200); });
       }
     }
     throw lastErr;
