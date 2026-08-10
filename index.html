@@ -33,12 +33,13 @@ document.addEventListener('DOMContentLoaded', async function() {
   function setStatus(msg) { if (loading) loading.textContent = msg; }
   async function parseManifestWithRetry(el) {
     let lastErr;
-    for (let attempt = 0; attempt < 20; attempt++) {
+    for (let attempt = 0; attempt < 15; attempt++) {
       try { return JSON.parse(el.textContent); }
       catch (err) {
         lastErr = err;
-        await new Promise(function(r) { requestAnimationFrame(function() { requestAnimationFrame(r); }); });
-        await new Promise(function(r) { setTimeout(r, 150); });
+        // Plain setTimeout only — requestAnimationFrame is suspended in
+        // backgrounded/hidden tabs and would hang this retry forever there.
+        await new Promise(function(r) { setTimeout(r, 200); });
       }
     }
     throw lastErr;
