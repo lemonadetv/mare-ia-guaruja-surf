@@ -31,6 +31,15 @@
 document.addEventListener('DOMContentLoaded', async function() {
   const loading = document.getElementById('__bundler_loading');
   function setStatus(msg) { if (loading) loading.textContent = msg; }
+  async function parseManifestWithRetry(el) {
+    let lastErr;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try { return JSON.parse(el.textContent); }
+      catch (err) { lastErr = err; await new Promise(function(r) { setTimeout(r, 40); }); }
+    }
+    throw lastErr;
+  }
+
 
   const FONT_MIME = /^(font[/]|application[/](x-)?font-|application[/]vnd\.ms-fontobject)/i;
   const MIME_TOKEN = /^[\w.+-]+[/][\w.+-]+$/;
@@ -69,8 +78,8 @@ document.addEventListener('DOMContentLoaded', async function() {
       return;
     }
 
-    const manifest = JSON.parse(manifestEl.textContent);
-    let template = JSON.parse(templateEl.textContent);
+    const manifest = await parseManifestWithRetry(manifestEl);
+    let template = await parseManifestWithRetry(templateEl);
 
     // Nested page bundles (iframe targets). Each ships ONCE, in the ROOT
     // document's manifest; frame srcs carry an about:blank#<uuid> marker
