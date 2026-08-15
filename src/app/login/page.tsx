@@ -1,1 +1,3 @@
-export default function Login(){return <main style={{maxWidth:520,margin:"8vh auto"}}><p className="eyebrow">ENTRAR</p><h1>De volta ao mar.</h1><div className="panel" style={{padding:28}}><p className="muted">Autenticação aguardando provisionamento seguro do banco e segredo de sessão.</p></div></main>}
+import Link from "next/link";
+export default function Login(){return <main style={{maxWidth:520,margin:"8vh auto"}}><p className="eyebrow">ENTRAR</p><h1 style={{fontSize:52}}>De volta ao mar.</h1><form className="panel auth-form" style={{padding:28}}><label>E-MAIL<input type="email" placeholder="voce@email.com" required/></label><label>SENHA<input type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" required/></label><button className="btn" type="submit">ENTRAR NO REPORT</button><p className="muted">Ainda nÃ£o tem conta? <Link className="good" href="/signup">Crie seu Surf DNA.</Link></p></form></main>}
+

@@ -1,1 +1,5 @@
-export default function Profile(){return <main><p className="eyebrow">SURF DNA</p><h1 style={{fontSize:52}}>O seu tipo de mar.</h1><div className="panel" style={{padding:30}}><p>Nível, tamanho preferido, pranchas, crowd e horários favoritos.</p><button className="btn">CONFIGURAR SURF DNA</button></div></main>}
+import Link from "next/link";
+import { Clock3, Gauge, Users, Waves } from "lucide-react";
+
+export default function Profile(){return <main><div className="page-head"><div><p className="eyebrow">SURF DNA</p><h1>O seu tipo de mar.</h1><p className="muted">PreferÃªncias que deixam cada recomendaÃ§Ã£o com a sua cara.</p></div><span className="status-chip">72% COMPLETO</span></div><section className="feature-grid">{[[Gauge,"NÃ­vel","IntermediÃ¡rio"],[Waves,"Tamanho favorito","0,8 â€” 1,4 m"],[Users,"Crowd","Quanto menos, melhor"],[Clock3,"HorÃ¡rio","Primeira luz"]].map(([Icon,label,value])=><button className="panel feature-card" key={String(label)} style={{color:"inherit",textAlign:"left",cursor:"pointer"}}><Icon size={28}/><p className="eyebrow">{String(label)}</p><h2>{String(value)}</h2><span className="muted">CLIQUE PARA ALTERAR â†’</span></button>)}</section><div className="cta-row"><Link className="btn" href="/app/ai">USAR MEU SURF DNA NA IA</Link><Link className="ghost-btn" href="/app">VOLTAR AO REPORT</Link></div></main>}
+
