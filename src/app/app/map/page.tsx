@@ -1,2 +1,1 @@
-import{InteractiveMap}from"@/components/interactive-map";export default function Map(){return <main><div className="page-head"><div><p className="eyebrow">MAPA DO SURF</p><h1>GuarujÃ¡, pico a pico.</h1><p className="muted">Ative camadas, escolha um pico e abra a leitura detalhada.</p></div><span className="status-chip">â— DADOS AO VIVO</span></div><InteractiveMap/></main>}
-
+import{InteractiveMap}from"@/components/interactive-map";export default function Map(){return <main><div className="page-head"><div><p className="eyebrow">MAPA DO SURF</p><h1>Guarujá, pico a pico.</h1><p className="muted">Ative camadas, escolha um pico e abra a leitura detalhada.</p></div><span className="status-chip">● DADOS AO VIVO</span></div><InteractiveMap/></main>}
