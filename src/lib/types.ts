@@ -1,0 +1,3 @@
+export type SpotProfile = { id:string; slug:string; name:string; lat:number; lon:number; exposure:number; idealSwell:number; swellWindow:number; idealHeight:[number,number]; idealPeriod:[number,number]; offshore:number; windTolerance:number; idealTide:number; difficulty:"iniciante"|"intermediário"|"avançado" };
+export type MarineHour = { time:string; waveHeight:number|null; waveDirection:number|null; wavePeriod:number|null; swellHeight:number|null; swellDirection:number|null; swellPeriod:number|null; windSpeed:number|null; windDirection:number|null; windGust:number|null; temperature:number|null; rain:number|null };
+export type ScoredHour = MarineHour & { score:number; label:string; decision:string; reasons:string[]; spot:SpotProfile };

@@ -1,0 +1,1 @@
+export default function Tomorrow(){return <main><p className="eyebrow">AMANHÃ</p><h1 style={{fontSize:52}}>O próximo melhor momento.</h1><div className="panel" style={{padding:30}}><h2>Comparação em preparação</h2><p className="muted">A rota está pronta para receber o mesmo motor horário, com comparação objetiva entre hoje e amanhã.</p></div></main>}

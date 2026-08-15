@@ -1,0 +1,1 @@
+export default function Profile(){return <main><p className="eyebrow">SURF DNA</p><h1 style={{fontSize:52}}>O seu tipo de mar.</h1><div className="panel" style={{padding:30}}><p>Nível, tamanho preferido, pranchas, crowd e horários favoritos.</p><button className="btn">CONFIGURAR SURF DNA</button></div></main>}

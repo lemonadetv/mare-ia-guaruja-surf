@@ -1,0 +1,1 @@
+export default function Login(){return <main style={{maxWidth:520,margin:"8vh auto"}}><p className="eyebrow">ENTRAR</p><h1>De volta ao mar.</h1><div className="panel" style={{padding:28}}><p className="muted">Autenticação aguardando provisionamento seguro do banco e segredo de sessão.</p></div></main>}

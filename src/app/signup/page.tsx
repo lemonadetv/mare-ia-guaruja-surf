@@ -1,0 +1,1 @@
+export default function Signup(){return <main style={{maxWidth:520,margin:"8vh auto"}}><p className="eyebrow">CRIAR CONTA</p><h1>Vamos achar onda.</h1><div className="panel" style={{padding:28}}><p className="muted">O cadastro seguro será liberado após a conexão do banco e autenticação. Nenhuma senha é armazenada neste protótipo de prévia.</p></div></main>}

@@ -1,0 +1,2 @@
+import{Dashboard}from"@/components/dashboard";import{getForecast}from"@/lib/providers";import{spots}from"@/lib/spots";import{scoreHour}from"@/lib/engine";
+export default async function App(){const data=await getForecast();const now=new Date();const hours=data.hours.filter(h=>new Date(h.time).getTime()>=now.getTime()-3600000).slice(0,24);const rankings=spots.map(spot=>({name:spot.name,slug:spot.slug,hours:hours.map(h=>scoreHour(spot,h))}));return <Dashboard rankings={rankings} source={data.source} available={data.available}/>}

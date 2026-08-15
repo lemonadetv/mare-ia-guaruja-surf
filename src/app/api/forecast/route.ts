@@ -1,0 +1,2 @@
+import{NextResponse}from"next/server";import{getForecast}from"@/lib/providers";import{spots}from"@/lib/spots";import{scoreHour}from"@/lib/engine";
+export async function GET(){const data=await getForecast();return NextResponse.json({...data,spots:spots.map(s=>({id:s.id,name:s.name,hours:data.hours.map(h=>scoreHour(s,h))}))},{headers:{"Cache-Control":"public, s-maxage=900, stale-while-revalidate=1800"}})}
