@@ -1,0 +1,1 @@
+import{SignIn}from"@clerk/nextjs";export default function Login(){return <main className="auth-shell"><div><p className="eyebrow">ENTRAR</p><h1>De volta ao mar.</h1><p className="muted">Sua previsão, favoritos e Surf DNA em um só lugar.</p></div><SignIn routing="hash" signUpUrl="/signup" forceRedirectUrl="/app/profile"/></main>}

@@ -1,0 +1,1 @@
+import{AIConsole}from"@/components/ai-console";export default function AI(){return <main><div className="page-head ai-wrap"><div><p className="eyebrow">IA DO MUNRRAT</p><h1>Uma resposta. Sem enrolação.</h1><p className="muted">Pergunte sobre praia, horário ou prancha.</p></div></div><AIConsole/></main>}

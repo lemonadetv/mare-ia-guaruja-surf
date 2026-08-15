@@ -1,3 +1,9 @@
+.next
+node_modules
+.env*
+!.env.example
+coverage
+.vercel
+
 .vercel
 .env*
-node_modules

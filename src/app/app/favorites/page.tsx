@@ -1,0 +1,1 @@
+import{FavoritesManager}from"@/components/favorites-manager";export default function Favorites(){return <main><div className="page-head"><div><p className="eyebrow">SEUS PICOS</p><h1>Favoritos.</h1><p className="muted">Marque as praias que você mais acompanha.</p></div></div><FavoritesManager/></main>}
