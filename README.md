@@ -1,4 +1,4 @@
-# Munrrat e Mano Surf Report
+# Munrrat Surf Report
 
 Reconstrução em Next.js do produto de inteligência de surf especializado no Guarujá. A previsão é obtida no servidor pelas APIs Open-Meteo Marine e Weather; o motor determinístico pontua cada praia por hora.
 
